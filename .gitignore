@@ -1,2 +1,4 @@
 **/log/*
+**/tmp/*
 config/master.key
+/config/master.key
