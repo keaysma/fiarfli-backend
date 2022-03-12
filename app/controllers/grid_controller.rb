@@ -28,6 +28,12 @@ class GridController < ApiController
       return
     end
 
+    if !params.key?(:media)
+      render json: {
+        error: "missing 'media' key"
+      }
+    end
+
     if !params.key?(:content)
       render json: {
         error: "missing 'content' key"
@@ -37,13 +43,17 @@ class GridController < ApiController
 
     token = params[:token]
     new_blocks = params[:blocks]
+    new_media = params[:media]
     new_content = params[:content]
 
     uri = URI('https://raw.githubusercontent.com/keaysma/fiarfli.art/master/src/components/index.json')
     res = Net::HTTP.get_response(uri)
-    @data = JSON.parse(res.body)
+    @index = JSON.parse(res.body)
 
-    @data[:blocks] = new_blocks
+    @index[:blocks] = new_blocks
+
+    @content = new_content
+
     #curl -L "https://..." -H "Authorization: token $token" --data ''
 
     #1. Get latest commit hash from the head of master
@@ -131,7 +141,7 @@ class GridController < ApiController
     req = Net::HTTP::Post.new(uri)
     req["Authorization"] = "token #{token}"
     req["Content-Type"] = "application/json"
-    req.body = {"content": @data.to_json.to_s}.to_json
+    req.body = {"content": @index.to_json.to_s}.to_json
     res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http|
       http.request(req)
     }
@@ -144,7 +154,24 @@ class GridController < ApiController
     p obj_hash
     puts "\n"
 
-    content_tree = new_content.map! {|item| 
+    uri = URI("https://api.github.com/repos/keaysma/fiarfli.art/git/blobs")
+    req = Net::HTTP::Post.new(uri)
+    req["Authorization"] = "token #{token}"
+    req["Content-Type"] = "application/json"
+    req.body = {"content": @content.to_json.to_s}.to_json
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http|
+      http.request(req)
+    }
+    res_data = JSON.parse(res.body)
+    content_url = res_data["url"]
+    content_hash = res_data["sha"]
+
+    puts "content.json uploaded"
+    p res_data
+    p content_hash
+    puts "\n"
+
+    content_tree = new_media.map! {|item| 
       p item["name"] 
       uri = URI("https://api.github.com/repos/keaysma/fiarfli.art/git/blobs")
       req = Net::HTTP::Post.new(uri)
@@ -196,6 +223,12 @@ class GridController < ApiController
           "mode": "100644",
           "type": "blob",
           "sha": obj_hash
+        },
+        {
+          "path": "src/components/content.json",
+          "mode": "100644",
+          "type": "blob",
+          "sha": content_hash
         }
       ] + content_tree + remove_content_tree
     }.to_json
