@@ -11,7 +11,6 @@ class GridController < ApiController
   end
 
   def update
-    #p params
     puts "\n"
     
     if !params.key?(:token)
@@ -45,14 +44,12 @@ class GridController < ApiController
     new_blocks = params[:blocks]
     new_media = params[:media]
     new_content = params[:content]
+    @content = new_content
 
-    uri = URI('https://raw.githubusercontent.com/keaysma/fiarfli.art/master/src/components/index.json')
-    res = Net::HTTP.get_response(uri)
+    res = Net::HTTP.get_response(URI('https://raw.githubusercontent.com/keaysma/fiarfli.art/master/src/components/index.json'))
     @index = JSON.parse(res.body)
 
     @index[:blocks] = new_blocks
-
-    @content = new_content
 
     #curl -L "https://..." -H "Authorization: token $token" --data ''
 
@@ -114,15 +111,17 @@ class GridController < ApiController
     # locate filenames in the existing tree that are not used, add them to the tree as empty to remove them
     new_art_nodes = new_blocks.map { |item| item["content"] }
     new_art_nodes = new_art_nodes.flatten
-    new_art_nodes = new_art_nodes.map { |item| "public" + item["path"] }
+    new_art_nodes = new_art_nodes.map { |item| "public" + item["path"].sub(/\.[^.]*$/, '') }
     
     existing_art_nodes = tree_data.select { |item| item["path"].match(/public\/art/) && item["type"] != "tree" }
     existing_art_nodes = existing_art_nodes.map { |item| item["path"] }
 
-    remove_art_nodes = existing_art_nodes.select { |item| ! new_art_nodes.include? item }
+    remove_art_nodes = existing_art_nodes.select { |item| ! new_art_nodes.include? item.sub(/\.[^.]*$/, '') }
 
     puts "removing"
     p remove_art_nodes
+
+    1/0
 
     remove_content_tree = remove_art_nodes.map { |item| 
       ({
@@ -137,6 +136,55 @@ class GridController < ApiController
     #curl -H "Authorization: token $token" -X POST -L https://api.github.com/repos/keaysma/fiarfli.art/git/blobs --data '{"content": "{}"}'
     #obj_url = res[:url]
     #obj_hash = res[:sha]
+    content_name_conversion = {}
+    content_tree = new_media.map! {|item| 
+      item_name = item["name"]
+      item_content = item["content"]
+
+      if item_name.match(/\.(png|jpg|jpeg)$/) then
+        webp_name = item["name"].sub(/\.[^.]*$/, '.webp')
+        p "#{item_name} -> #{webp_name}"
+
+        content_name_conversion[item_name] = webp_name
+        item_name = webp_name
+        item_content = helpers.convert_to_webp(item["content"])
+      end
+
+      uri = URI("https://api.github.com/repos/keaysma/fiarfli.art/git/blobs")
+      req = Net::HTTP::Post.new(uri)
+      req["Authorization"] = "token #{token}"
+      req["Content-Type"] = "application/json"
+
+      req.body = {"content": item_content, "encoding": "base64"}.to_json
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http|
+        http.request(req)
+      }
+      res_data = JSON.parse(res.body)
+      
+      ({
+        "path": "public" + item_name,
+        "mode": "100644",
+        "type": "blob",
+        "sha": res_data["sha"]
+      })
+    }
+
+    puts "media uploaded"
+    p content_tree
+    puts "\n"
+
+    @index[:"blocks"] = @index[:"blocks"].map! {|block|
+      block[:"content"] = block[:"content"].map! {|block_content|
+        new_name = content_name_conversion[block_content[:"path"]]
+        if !new_name.nil? then
+          block_content[:"path"] = new_name
+        end
+        
+        block_content
+      }
+
+      block
+    }
     uri = URI("https://api.github.com/repos/keaysma/fiarfli.art/git/blobs")
     req = Net::HTTP::Post.new(uri)
     req["Authorization"] = "token #{token}"
@@ -169,30 +217,6 @@ class GridController < ApiController
     puts "content.json uploaded"
     p res_data
     p content_hash
-    puts "\n"
-
-    content_tree = new_media.map! {|item| 
-      p item["name"] 
-      uri = URI("https://api.github.com/repos/keaysma/fiarfli.art/git/blobs")
-      req = Net::HTTP::Post.new(uri)
-      req["Authorization"] = "token #{token}"
-      req["Content-Type"] = "application/json"
-      req.body = {"content": item["content"], "encoding": "base64"}.to_json
-      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http|
-        http.request(req)
-      }
-      res_data = JSON.parse(res.body)
-      
-      ({
-        "path": "public" + item["name"],
-        "mode": "100644",
-        "type": "blob",
-        "sha": res_data["sha"]
-      })
-    }
-
-    puts "media uploaded"
-    p content_tree
     puts "\n"
 
     #Example data:
