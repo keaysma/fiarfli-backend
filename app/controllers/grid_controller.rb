@@ -121,8 +121,6 @@ class GridController < ApiController
     puts "removing"
     p remove_art_nodes
 
-    1/0
-
     remove_content_tree = remove_art_nodes.map { |item| 
       ({
         "path": item,
