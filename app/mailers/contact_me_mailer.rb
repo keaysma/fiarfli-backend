@@ -1,14 +1,16 @@
 class ContactMeMailer < ApplicationMailer
-    #default to: 'raquel@fiarfli.art'
+    default from: 'mailer@keays.io'
+    default to: -> { ENV["EMAIL_RECEIVER"] }
 
     def contact_email
-        @email = params[:email]
         @subject = params[:subject]
         mail(
-            to: "m@keays.io",
-            from: @email, 
-            subject: @subject, 
-            body: params[:body]
+            subject: "Contact Me: #{@subject}", 
+            body: """
+from: #{params[:name]} <#{params[:email]}>
+subject: #{@subject}
+message: #{params[:body]}
+"""
         )
     end
 end
