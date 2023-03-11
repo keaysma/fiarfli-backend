@@ -7,4 +7,6 @@ Rails.application.routes.draw do
   get "/api/grid", to: "grid#data"
   post "/api/grid", to: "grid#update"
   #get "/grid", to: "grid#page"
+
+  post "/api/mail", to: "mail#create"
 end
