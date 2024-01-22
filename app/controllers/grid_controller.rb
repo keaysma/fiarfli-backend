@@ -3,71 +3,37 @@ require 'net/http'
 require 'json'
 
 class GridController < ApiController
+
   def data
-    uri = URI('https://raw.githubusercontent.com/keaysma/fiarfli.art/master/src/components/index.json')
-    res = Net::HTTP.get_response(uri)
-    @data = JSON.parse(res.body)
-    render json: @data
+    render json: helpers.fetch_index_content()
   end
 
   def update
-    puts "\n"
-    
-    if !params.key?(:token)
+    if (!params.key?(:token) or params[:token].empty?) or
+       (!params.key?(:blocks) or params[:blocks].empty?) or
+       (!params.key?(:media) or params[:media].empty?) or
+       (!params.key?(:content) or params[:content].empty?) 
+    then
       render json: {
-        error: "missing 'token' key"
+        error: "missing parameters, requires 'token', 'blocks', 'media', and 'content'"
       }
       return
     end
     
-    if !params.key?(:blocks)
-      render json: {
-        error: "missing 'blocks' key"
-      }
-      return
-    end
-
-    if !params.key?(:media)
-      render json: {
-        error: "missing 'media' key"
-      }
-    end
-
-    if !params.key?(:content)
-      render json: {
-        error: "missing 'content' key"
-      }
-      return
-    end
-
-    token = params[:token]
-    new_blocks = params[:blocks]
-    new_media = params[:media]
-    new_content = params[:content]
-    @content = new_content
-
-    res = Net::HTTP.get_response(URI('https://raw.githubusercontent.com/keaysma/fiarfli.art/master/src/components/index.json'))
-    @index = JSON.parse(res.body)
-
+    token, new_blocks, new_media, new_content = params.values_at(:token, :blocks, :media, :content)
+    
+    #0. Get the current index.json, and update it with the new blocks
+    @index = helpers.fetch_index_content()
     @index[:blocks] = new_blocks
 
     #1. Get latest commit hash from the head of master
-    res_data = helpers.get(
-      "https://api.github.com/repos/keaysma/fiarfli.art/git/refs/heads/master",
-      token
-    )
-    
-    commit_url = res_data["object"]["url"]
-    commit_hash = res_data["object"]["sha"]
+    commit_url, commit_hash = helpers.fetch_commit_info("https://api.github.com/repos/keaysma/fiarfli.art/git/refs/heads/master", token)
 
     #2. Get the commit's data
-    res_data = helpers.get(commit_url, token)
-    tree_url = res_data["tree"]["url"]
-    tree_hash = res_data["tree"]["sha"]
+    tree_url, tree_hash = helpers.fetch_commit_info(commit_url, token)
 
     #3. Get the tree
-    res_data = helpers.get("#{tree_url}?recursive=1", token)
-    tree_data = res_data["tree"]
+    tree_data = helpers.fetch_tree_info(tree_url, token)
 
     puts "Existing tree:\n#{tree_data}\n"
 
@@ -171,7 +137,7 @@ class GridController < ApiController
 
     res_data = helpers.post(
       "https://api.github.com/repos/keaysma/fiarfli.art/git/blobs", token,
-      {"content": @content.to_json.to_s}.to_json
+      {"content": new_content.to_json.to_s}.to_json
     )
     content_url = res_data["url"]
     content_hash = res_data["sha"]

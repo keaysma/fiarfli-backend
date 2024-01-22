@@ -6,33 +6,21 @@ require 'base64'
 require 'tempfile'
 
 module GridHelper
-    def get(path, token)
-        uri = URI(path)
-        req = Net::HTTP::Get.new(uri) #Net::HTTP.method(method).new(uri)
-        
-        # Hard coding headers for now
-        req["Authorization"] = "token #{token}" #headers["Authorization"]
-        res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| 
-            http.request(req)
-        }
-
-        res_data = JSON.parse(res.body)
-        res_data
+    def fetch_index_content
+        NetReq.get('https://raw.githubusercontent.com/keaysma/fiarfli.art/master/src/components/index.json', nil)
     end
 
-    def post(path, token, body)
-        uri = URI(path)
-        req = Net::HTTP::Post.new(uri)
-        
-        # Hard coding headers for now
-        req["Authorization"] = "token #{token}" #headers["Authorization"]
-        req.body = body
-        res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| 
-            http.request(req)
-        }
+    def fetch_commit_info(url, token)
+        res = NetReq.get(url, token)
+        commit_url = res["object"]["url"]
+        commit_hash = res["object"]["sha"]
+        [commit_url, commit_hash]
+    end
 
-        res_data = JSON.parse(res.body)
-        res_data
+    def fetch_tree_info(url, token)
+        res = NetReq.get("#{url}?recursive=1", token)
+        tree_data = res_data["tree"]
+        tree_data
     end
 
     def convert_to_webp(input_base64str)
@@ -44,21 +32,13 @@ module GridHelper
         input_file.write(input_content)
         input_file.flush()
         input_file.close()
-        #input_file.close()
 
-        p input_base64str.length
-        p input_content.length
-        p input_file.path
-        
-        WebP.encode(input_file.path, output_file.path)
+        WebpUtils.convert(input_file, output_file, thumbnail_file)
 
-        output_file.rewind()
         output_content = output_file.read()
         output_base64str = Base64.encode64(output_content)
         output_file.close()
 
-        webp_size = WebP.webp_size(output_content)
-        WebP.encode(input_file.path, thumbnail_file.path, quality: 95, resize_w: (webp_size[0] * 0.5).to_int, resize_h: (webp_size[1] * 0.5).to_int)
         output_thumbnail = thumbnail_file.read()
         output_thumbnail_base64str = Base64.encode64(output_thumbnail)
         thumbnail_file.close()
