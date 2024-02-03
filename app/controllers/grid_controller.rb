@@ -30,27 +30,29 @@ class GridController < ApiController
     commit_url, commit_hash = helpers.fetch_commit_info("https://api.github.com/repos/keaysma/fiarfli.art/git/refs/heads/master", token)
 
     #2. Get the commit's data
-    tree_url, tree_hash = helpers.fetch_commit_info(commit_url, token)
+    tree_url, tree_hash = helpers.fetch_tree_info(commit_url, token)
 
     #3. Get the tree
-    tree_data = helpers.fetch_tree_info(tree_url, token)
+    tree_data = helpers.fetch_tree(tree_url, token)
 
-    puts "Existing tree:\n#{tree_data}\n"
+    # puts "Existing tree:\n#{tree_data}\n"
 
     # locate filenames in the existing tree that are not used, add them to the tree as empty to remove them
-    new_art_nodes_index = new_blocks.map { |item| item["content"] }
-    new_art_nodes_index = new_art_nodes_index.flatten
-    new_art_nodes = new_art_nodes_index.map { |item| "public" + item["path"].sub(/\.[^.]*$/, '') }
+    new_art_nodes_index = new_blocks.map{ |item| item["content"] }.flatten
+    new_art_node_paths = new_art_nodes_index.map { |item| item["path"].sub(/\.[^.]*$/, '') }
+
+    new_art_nodes = new_art_node_paths.map { |path| "public" + path }
     # assume thumbnail will stay if it exists
-    new_art_nodes += new_art_nodes_index.map { |item| "public/thumbnail" + item["path"].sub(/\.[^.]*$/, '') }
-    
+    new_art_nodes += new_art_node_paths.map { |path| "public/thumbnail" + path }
+
     existing_art_nodes_base = tree_data.select { |item| (item["path"].match(/public\/art/) || item["path"].match(/public\/thumbnail\/art/)) && item["type"] != "tree" }
-    existing_art_nodes = existing_art_nodes_base.map { |item| item["path"] }
+    existing_art_nodes = existing_art_nodes_base.map { |item| item["path"].sub(/\.[^.]*$/, '') }
     
-    remove_art_nodes = existing_art_nodes.select { |item| ! new_art_nodes.include? item.sub(/\.[^.]*$/, '') }
+    remove_art_nodes = existing_art_nodes.select { |item| ! new_art_nodes.include? item }
 
     puts "removing"
     p remove_art_nodes
+    remove_art_nodes = [] # disable for now
 
     remove_content_tree = remove_art_nodes.map { |item| 
       ({
@@ -65,30 +67,29 @@ class GridController < ApiController
     content_name_conversion = {}
     thumbnails = {}
     content_tree = new_media.map! {|item| 
-      item_name = item["name"]
-      item_content = item["content"]
+      name, content = item.values_at(:name, :content)
 
-      if item_name.match(/\.(png|jpg|jpeg)$/) then
-        webp_name = item["name"].sub(/\.[^.]*$/, '.webp')
-        webp_data = helpers.convert_to_webp(item_content)
+      if name.match(/\.(png|jpg|jpeg)$/) then
+        webp_name = name.sub(/\.[^.]*$/, '.webp')
+        webp_data = helpers.convert_to_webp(content)
         
-        p "#{item_name} -> #{webp_name}"
+        p "#{name} -> #{webp_name}"
         
-        content_name_conversion[item_name] = webp_name
-        thumbnails[item_name] = webp_data[:thumbnail]
+        content_name_conversion[name] = webp_name
+        thumbnails[name] = webp_data[:thumbnail]
 
-        item_name = webp_name
-        item_content = webp_data[:content]
+        name = webp_name
+        content = webp_data[:content]
       end
 
       
-      res_data = helpers.post("https://api.github.com/repos/keaysma/fiarfli.art/git/blobs", token, {"content": item_content, "encoding": "base64"}.to_json)
+      sha = helpers.upload_blob(content, token)
       
       ({
-        "path": "public" + item_name,
+        "path": "public" + name,
         "mode": "100644",
         "type": "blob",
-        "sha": res_data["sha"]
+        "sha": sha
       })
     }
 
@@ -105,15 +106,12 @@ class GridController < ApiController
           if !thumbnail_content.nil? then
             block_content[:"thumbnail"] = "thumbnail" + new_name
 
-            res_data = helpers.post(
-              "https://api.github.com/repos/keaysma/fiarfli.art/git/blobs", token, 
-              {"content": thumbnail_content, "encoding": "base64"}.to_json
-            )
+            sha = helpers.upload_blob(thumbnail_content, token)
             content_tree += [{
               "path": "public/thumbnail" + new_name,
               "mode": "100644",
               "type": "blob",
-              "sha": res_data["sha"]
+              "sha": sha
             }]
           end
         end
@@ -126,70 +124,44 @@ class GridController < ApiController
 
     puts "thumbnails uploaded\n#{content_tree}\n"
 
-    res_data = helpers.post(
-      "https://api.github.com/repos/keaysma/fiarfli.art/git/blobs", token,
-      {"content": @index.to_json.to_s}.to_json
-    )
-    obj_url = res_data["url"]
-    obj_hash = res_data["sha"]
+    index_sha = helpers.upload_blob(JSON.pretty_generate(@index), token)
+    puts "index.json uploaded: #{index_sha}\n"
 
-    puts "index.json uploaded\n#{res_data}\n#{obj_hash}\n"
-
-    res_data = helpers.post(
-      "https://api.github.com/repos/keaysma/fiarfli.art/git/blobs", token,
-      {"content": new_content.to_json.to_s}.to_json
-    )
-    content_url = res_data["url"]
-    content_hash = res_data["sha"]
-
-    puts "content.json uploaded\n#{res_data}\n#{content_hash}\n"
+    content_sha = helpers.upload_blob(JSON.pretty_generate(new_content), token)
+    puts "content.json uploaded: #{content_sha}\n"
 
     #5. modify the recursive tree, replacing the "sha" and "url" values for the file with "path": "src/components/state.js"
     #just kidding we can skip this
 
     #6. Upload the new tree
-    res_data = helpers.post(
-      "https://api.github.com/repos/keaysma/fiarfli.art/git/trees", token,
-      {
-        "base_tree": tree_hash,
-        "tree": [
-          {
-            "path": "src/components/index.json",
-            "mode": "100644",
-            "type": "blob",
-            "sha": obj_hash
-          },
-          {
-            "path": "src/components/content.json",
-            "mode": "100644",
-            "type": "blob",
-            "sha": content_hash
-          }
-        ] + content_tree + remove_content_tree
-      }.to_json
+    new_tree_hash = helpers.upload_tree(
+      tree_hash,
+      [
+        {
+          "path": "src/components/index.json",
+          "mode": "100644",
+          "type": "blob",
+          "sha": index_sha
+        },
+        {
+          "path": "src/components/content.json",
+          "mode": "100644",
+          "type": "blob",
+          "sha": content_sha
+        }
+      ] + content_tree + remove_content_tree, 
+      token
     )
-    new_tree_url = res_data["url"]
-    new_tree_hash = res_data["sha"]
 
-    puts "tree uploaded\n#{res_data}\n#{new_tree_hash}\n"
+    puts "tree uploaded: #{new_tree_hash}\n"
 
     #7. Create the commit
-    res_data = helpers.post(
-      "https://api.github.com/repos/keaysma/fiarfli.art/git/commits", token,
-      {"message": "automated upload", "parents": [commit_hash], "tree": new_tree_hash}.to_json
-    )
-    new_commit_url = res_data["url"]
-    new_commit_hash = res_data["sha"]
-
-    puts "commit created\n#{new_commit_hash}\n"
+    new_commit_hash = helpers.upload_commit("🌞 automated upload 🌞", [commit_hash], new_tree_hash, token)
+    puts "commit created: #{new_commit_hash}\n"
 
     #8. Update head
-    helpers.post(
-      "https://api.github.com/repos/keaysma/fiarfli.art/git/refs/heads/master", token,
-      {"sha": new_commit_hash}.to_json
-    )
-
-    puts "head moved"
+    helpers.update_head("master", new_commit_hash, token)
+    puts "head moved to #{new_commit_hash}\n"
 
 
     render json: {
