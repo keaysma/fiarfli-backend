@@ -31,8 +31,7 @@ module NetReq
 
         req.body = body
         res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| 
-            # http.request(req)
-            p req.body
+            http.request(req)
         }
 
         res_data = JSON.parse(res.body)
