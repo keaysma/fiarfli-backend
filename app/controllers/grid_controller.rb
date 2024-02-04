@@ -24,7 +24,7 @@ class GridController < ApiController
     
     #0. Get the current index.json, and update it with the new blocks
     @index = helpers.fetch_index_content()
-    @index[:blocks] = new_blocks
+    @index["blocks"] = new_blocks
 
     #1. Get latest commit hash from the head of master
     commit_url, commit_hash = helpers.fetch_commit_info("https://api.github.com/repos/keaysma/fiarfli.art/git/refs/heads/master", token)
@@ -52,7 +52,7 @@ class GridController < ApiController
 
     puts "removing"
     p remove_art_nodes
-    remove_art_nodes = [] # disable for now
+    remove_art_nodes = [] # disable for now=
 
     remove_content_tree = remove_art_nodes.map { |item| 
       ({
@@ -95,16 +95,16 @@ class GridController < ApiController
 
     puts "media uploaded\n#{content_tree}\n"
 
-    @index[:"blocks"] = @index[:"blocks"].map! {|block|
-      block[:"content"] = block[:"content"].map! {|block_content|
-        old_name = block_content[:"path"]
+    @index["blocks"] = @index["blocks"].map! {|block|
+      block["content"] = block["content"].map! {|block_content|
+        old_name = block_content["path"]
         new_name = content_name_conversion[old_name]
         if !new_name.nil? then
-          block_content[:"path"] = new_name
+          block_content["path"] = new_name
 
           thumbnail_content = thumbnails[old_name]
           if !thumbnail_content.nil? then
-            block_content[:"thumbnail"] = "thumbnail" + new_name
+            block_content["thumbnail"] = "thumbnail" + new_name
 
             sha = helpers.upload_blob(thumbnail_content, token)
             content_tree += [{
@@ -124,10 +124,10 @@ class GridController < ApiController
 
     puts "thumbnails uploaded\n#{content_tree}\n"
 
-    index_sha = helpers.upload_blob(JSON.pretty_generate(@index), token)
+    index_sha = helpers.upload_blob(JSON.pretty_generate(@index.as_json), token)
     puts "index.json uploaded: #{index_sha}\n"
 
-    content_sha = helpers.upload_blob(JSON.pretty_generate(new_content), token)
+    content_sha = helpers.upload_blob(JSON.pretty_generate(new_content.as_json), token)
     puts "content.json uploaded: #{content_sha}\n"
 
     #5. modify the recursive tree, replacing the "sha" and "url" values for the file with "path": "src/components/state.js"

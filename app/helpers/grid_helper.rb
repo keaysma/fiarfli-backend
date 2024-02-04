@@ -62,7 +62,7 @@ module GridHelper
         res["sha"]
     end
 
-    def upload_blob(content, encoding, token)
+    def upload_blob(content, token)
         body = {
             "content": Base64.encode64(content),
             "encoding": "base64"
