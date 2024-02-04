@@ -5,6 +5,7 @@ Rails.application.routes.draw do
   root "grid#data"
 
   get "/api/grid", to: "grid#data"
+  get "/api/grid/head", to: "grid#head"
   post "/api/grid", to: "grid#update"
   #get "/grid", to: "grid#page"
 
