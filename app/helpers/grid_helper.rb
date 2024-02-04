@@ -6,8 +6,14 @@ require 'base64'
 require 'tempfile'
 
 module GridHelper
-    def fetch_index_content
-        NetReq.get('https://raw.githubusercontent.com/keaysma/fiarfli.art/master/src/components/index.json', nil)
+    def fetch_index_file(branch, token)
+        sha = fetch_head_info(branch, token)
+        NetReq.get("https://raw.githubusercontent.com/keaysma/fiarfli.art/#{sha}/src/components/index.json", token)
+    end
+
+    def fetch_content_file(branch, token)
+        sha = fetch_head_info(branch, token)
+        NetReq.get("https://raw.githubusercontent.com/keaysma/fiarfli.art/#{sha}/src/components/content.json", token)
     end
 
     def update_head(branch, commit_hash, token)
@@ -17,12 +23,10 @@ module GridHelper
         )
     end
 
-    def fetch_commit_info(url, token)
-        res = NetReq.get(url, token)
-        p res
-        commit_url = res["object"]["url"]
-        commit_hash = res["object"]["sha"]
-        [commit_url, commit_hash]
+    def fetch_head_info(branch, token)
+        res = NetReq.get("https://api.github.com/repos/keaysma/fiarfli.art/git/refs/heads/#{branch}", token)
+        commit_info = res["object"]
+        commit_info["sha"]
     end
 
     def upload_commit(message, parent_hashes, tree_hash, token)
@@ -37,21 +41,20 @@ module GridHelper
         res["sha"]
     end
 
-    def fetch_tree_info(url, token)
-        res = NetReq.get(url, token)
-        p res
-        commit_url = res["tree"]["url"]
+    def fetch_tree_info(hash, token)
+        res = NetReq.get("https://api.github.com/repos/keaysma/fiarfli.art/git/commits/#{hash}", token)
         commit_hash = res["tree"]["sha"]
-        [commit_url, commit_hash]
+        commit_hash
     end
 
     def fetch_tree(url, token)
-        res = NetReq.get("#{url}?recursive=1", token)
+        res = NetReq.get("https://api.github.com/repos/keaysma/fiarfli.art/git/trees/#{url}?recursive=1", token)
         tree_data = res["tree"]
         tree_data
     end
 
     def upload_tree(base_tree, tree_data, token)
+        p tree_data
         res = NetReq.post(
             "https://api.github.com/repos/keaysma/fiarfli.art/git/trees", token, 
             {
@@ -59,6 +62,7 @@ module GridHelper
                 "tree": tree_data
             }.to_json
         )
+        p res
         res["sha"]
     end
 
