@@ -5,14 +5,34 @@ require 'json'
 class GridController < ApiController
 
   def data
-    render json: helpers.fetch_index_content()
+    token = request.headers["X-Git-Token"]
+    render json: JSON.pretty_generate({
+      "head": helpers.fetch_head_info("master", token),
+      "index": helpers.fetch_index_file("master", token).as_json,
+      "content": helpers.fetch_content_file("master", token).as_json
+    })
+  end
+
+  def head
+    token = request.headers["X-Git-Token"]
+    render json: JSON.pretty_generate({
+      "head": helpers.fetch_head_info("master", token)
+    })
   end
 
   def update
-    if (!params.key?(:token) or params[:token].empty?) or
-       (!params.key?(:blocks) or params[:blocks].empty?) or
-       (!params.key?(:media) or params[:media].empty?) or
-       (!params.key?(:content) or params[:content].empty?) 
+    token = request.headers["X-Git-Token"]
+
+    if !token then
+      render json: {
+        error: "missing token"
+      }
+      return
+    end
+
+    if (!params.key?(:blocks) or params[:blocks].empty?) or
+       (!params.key?(:content) or params[:content].empty?) or
+       (!params.key?(:media))
     then
       render json: {
         error: "missing parameters, requires 'token', 'blocks', 'media', and 'content'"
@@ -20,39 +40,39 @@ class GridController < ApiController
       return
     end
     
-    token, new_blocks, new_media, new_content = params.values_at(:token, :blocks, :media, :content)
+    new_blocks, new_media, new_content = params.values_at(:blocks, :media, :content)
     
     #0. Get the current index.json, and update it with the new blocks
-    @index = helpers.fetch_index_content()
+    @index = helpers.fetch_index_file("master", token)
     @index["blocks"] = new_blocks
 
     #1. Get latest commit hash from the head of master
-    commit_url, commit_hash = helpers.fetch_commit_info("https://api.github.com/repos/keaysma/fiarfli.art/git/refs/heads/master", token)
+    commit_hash = helpers.fetch_head_info("master", token)
 
     #2. Get the commit's data
-    tree_url, tree_hash = helpers.fetch_tree_info(commit_url, token)
+    tree_hash = helpers.fetch_tree_info(commit_hash, token)
+    puts "Existing tree hash: #{tree_hash}\n"
 
     #3. Get the tree
-    tree_data = helpers.fetch_tree(tree_url, token)
+    tree_data = helpers.fetch_tree(tree_hash, token)
 
     # puts "Existing tree:\n#{tree_data}\n"
 
     # locate filenames in the existing tree that are not used, add them to the tree as empty to remove them
     new_art_nodes_index = new_blocks.map{ |item| item["content"] }.flatten
-    new_art_node_paths = new_art_nodes_index.map { |item| item["path"].sub(/\.[^.]*$/, '') }
+    new_art_node_paths = new_art_nodes_index.map { |item| item["path"].sub(/\.[^.]*$/, '')  }
 
-    new_art_nodes = new_art_node_paths.map { |path| "public" + path }
+    new_art_nodes = new_art_node_paths.map { |path| "public" + path}
     # assume thumbnail will stay if it exists
     new_art_nodes += new_art_node_paths.map { |path| "public/thumbnail" + path }
 
     existing_art_nodes_base = tree_data.select { |item| (item["path"].match(/public\/art/) || item["path"].match(/public\/thumbnail\/art/)) && item["type"] != "tree" }
-    existing_art_nodes = existing_art_nodes_base.map { |item| item["path"].sub(/\.[^.]*$/, '') }
+    existing_art_nodes = existing_art_nodes_base.map { |item| item["path"] }
     
-    remove_art_nodes = existing_art_nodes.select { |item| ! new_art_nodes.include? item }
+    remove_art_nodes = existing_art_nodes.select { |item| ! new_art_nodes.include? item.sub(/\.[^.]*$/, '') }
 
     puts "removing"
     p remove_art_nodes
-    remove_art_nodes = [] # disable for now=
 
     remove_content_tree = remove_art_nodes.map { |item| 
       ({
