@@ -61,7 +61,7 @@ RUN --mount=type=cache,id=dev-apt-cache,sharing=locked,target=/var/cache/apt \
 
 FROM build_deps as gems
 
-RUN gem update --system --no-document && \
+RUN gem i rubygems-update -v '<3.5.0' && update_rubygems && \
     gem install -N bundler -v ${BUNDLER_VERSION}
 
 COPY Gemfile* ./
