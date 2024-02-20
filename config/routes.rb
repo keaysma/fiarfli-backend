@@ -10,4 +10,6 @@ Rails.application.routes.draw do
   #get "/grid", to: "grid#page"
 
   post "/api/mail", to: "mail#create"
+  
+  get "/api/forger", to: "forger#data"
 end
