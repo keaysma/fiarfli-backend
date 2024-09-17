@@ -66,9 +66,9 @@ module GridHelper
         res["sha"]
     end
 
-    def upload_blob(content, token)
+    def upload_blob(content, token, is_base64 = false)
         body = {
-            "content": Base64.encode64(content),
+            "content": is_base64 ? content : Base64.encode64(content),
             "encoding": "base64"
         }.to_json
         res = NetReq.post("https://api.github.com/repos/keaysma/fiarfli.art/git/blobs", token, body)

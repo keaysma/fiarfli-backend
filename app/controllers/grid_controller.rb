@@ -102,8 +102,8 @@ class GridController < ApiController
         content = webp_data[:content]
       end
 
-      
-      sha = helpers.upload_blob(content, token)
+      # Do not base64 encode anything that was converted to webp, they are already base64 encoded
+      sha = helpers.upload_blob(content, token, !name.match(/\.webp$/))
       
       ({
         "path": "public" + name,
